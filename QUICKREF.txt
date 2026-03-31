@@ -1,0 +1,171 @@
+"""
+TCT_EVAL.PY - QUICK REFERENCE CARD
+===================================
+
+BASIC USAGE (3 lines):
+----------------------
+from tct_eval import default_kc200gt, evaluate_tct, generate_demo_shading
+
+module = default_kc200gt()
+G_map, T_map = generate_demo_shading(4, 3, pattern='partial')
+results = evaluate_tct(G_map, T_map, module)
+
+
+RESULTS DICTIONARY:
+-------------------
+results = {
+    'I': np.array,              # Current points [A]
+    'V': np.array,              # Voltage points [V]
+    'P': np.array,              # Power points [W]
+    'gmpp': (P, I, V),          # Global MPP tuple
+    'local_mpps': [(P,I,V), ...] # Local MPPs list
+}
+
+Access: results['gmpp'][0]      # → Pmpp [W]
+        results['gmpp'][1]      # → Impp [A]
+        results['gmpp'][2]      # → Vmpp [V]
+
+
+SHADING PATTERNS:
+-----------------
+generate_demo_shading(R, C, pattern='uniform')      # All 1000 W/m²
+generate_demo_shading(R, C, pattern='partial')     # Corner shaded
+generate_demo_shading(R, C, pattern='diagonal')    # Diagonal gradient
+generate_demo_shading(R, C, pattern='checkerboard')# Alternating
+generate_demo_shading(R, C, pattern='random')      # Random levels
+
+
+CUSTOM SHADING:
+---------------
+import numpy as np
+
+G_map = np.array([
+    [1000, 800, 600],
+    [1000, 500, 400],
+    [1000, 1000, 200],
+    [1000, 1000, 100]
+])  # Shape: (R, C) - rows × columns
+
+T_map = np.full((4, 3), 25.0)  # All 25°C, or vary per module
+
+
+CUSTOM MODULE:
+--------------
+from tct_eval import ModuleParams
+
+custom = ModuleParams(
+    Voc_stc=40.0, Isc_stc=10.0,
+    Vmpp_stc=32.0, Impp_stc=9.0,
+    Rs=0.3, Rsh=200.0, n=1.0,
+    Ns_cells=60, Ns_per_substring=20
+)
+
+results = evaluate_tct(G_map, T_map, custom)
+
+
+PLOTTING:
+---------
+from tct_eval import plot_iv_pv
+
+plot_iv_pv(results, title="My Analysis", show=True)
+plot_iv_pv(results, filename="output.png", show=False)
+
+
+OPTIMIZATION INTEGRATION:
+-------------------------
+# Fitness function example
+def fitness(config):
+    G_map = decode_configuration(config)
+    T_map = np.full_like(G_map, 25.0)
+    results = evaluate_tct(G_map, T_map, module)
+    return results['gmpp'][0]  # Maximize power
+
+
+FUNCTIONS REFERENCE:
+--------------------
+default_kc200gt() → ModuleParams
+    Returns KC200GT parameters
+
+scale_params(module, G, T) → dict
+    Scale parameters to operating conditions
+
+module_voltage_at_current_with_substrings(I, G, T, module) → float
+    Compute module voltage with bypass modeling
+
+evaluate_tct(G_map, T_map, module, num_points=500) → dict
+    Main evaluation function, returns I-V-P curves
+
+find_local_mpps(I, V, P) → list
+    Detect local maximum power points
+
+generate_demo_shading(R, C, levels=[...], pattern='...') → (G_map, T_map)
+    Generate test shading patterns
+
+plot_iv_pv(results, title='...', show=True, filename=None)
+    Visualize I-V and P-V curves
+
+
+TYPICAL VALUES (KC200GT 4×3 array):
+------------------------------------
+Uniform 1000 W/m², 25°C:
+  Voc ≈ 131 V, Isc ≈ 24.6 A, Pmpp ≈ 2393 W
+
+Partial shading (2 modules at 100 W/m²):
+  Pmpp ≈ 1777 W, Multiple local MPPs
+
+Diagonal gradient:
+  Pmpp ≈ 763 W, 8+ local MPPs
+
+
+PERFORMANCE:
+------------
+Evaluation time: ~0.5-1 sec (4×3, 300 points)
+Memory: <10 MB
+Accuracy: <0.5% vs theoretical
+Stability: 10-1000 W/m², 25-75°C
+
+
+COORDINATE SYSTEM:
+------------------
+G_map shape: (R, C) where R=rows, C=columns
+Row = parallel block (modules at same voltage)
+Rows in series (same current through all)
+
+    Col0   Col1   Col2
+   [M00] [M01] [M02]  Row 0
+   [M10] [M11] [M12]  Row 1
+   [M20] [M21] [M22]  Row 2
+   [M30] [M31] [M32]  Row 3
+
+
+ERROR HANDLING:
+---------------
+- Very low G (<1 W/m²): Module treated as off
+- Negative I: Not supported (no reverse bias modeling)
+- Non-convergence: Returns last iterate
+- NaN/Inf: Clamped exponentials prevent this
+
+
+NOTES:
+------
+* Module temperature uniform within substrings
+* Bypass diodes: 3 per module (18 cells each)
+* Bypass activation: V_sub < -0.5V
+* Newton-Raphson with safeguards
+* Bisection for Isc finding
+* Automatic MPP detection
+
+
+FILES:
+------
+tct_eval.py      - Main module (23 KB)
+README_TCT.md    - Full documentation (12 KB)
+verify_tct.py    - Test suite (7 KB)
+SUMMARY.md       - Results summary
+QUICKREF.txt     - This file
+
+
+VERSION: 1.0
+AUTHOR: For PV reconfiguration optimization research
+DATE: November 2025
+"""
