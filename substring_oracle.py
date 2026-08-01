@@ -1,20 +1,16 @@
 """Substring-level TCT cross-validation oracle.
 
-Promoted to the regression-suite oracle in the round-3 Phase 2a fix
-(2026-07-30, decision R1) after the Phase 1 validation gate (T3a) showed
-the -1.0 V row clamp shared by the pre-fix backend and the monolithic
-``tct_eval.evaluate_tct`` path relocates the global maximum power point
-on one released pattern. ``tct_eval.py`` is retained beside this file
-for provenance and for its single-diode primitives, which this oracle
-reuses. Original gate copy archived under the manuscript folder at
-``code/2026-07-30-phase1-pv-gate/substring_tct.py``.
+An independent total-cross-tied array model at substring resolution, used to
+cross-validate the pvlib-backed array solver. It resolves each module into its
+bypass-protected substrings rather than treating the module as one monolithic
+device, which matters wherever bypass conduction is engaged.
 
-Substring-level TCT solver, built for the round-3 Phase 1 PV validation gate (T3a).
-
-Independent comparison model built from the cross-validation oracle's unused
-per-substring machinery (tct_eval.py: scale_params,
-_substring_voltage_at_current, module_voltage_at_current_with_substrings,
-round-2 finding B17).
+Built from the per-substring machinery already present in ``tct_eval.py``
+(``scale_params``, ``_substring_voltage_at_current``,
+``module_voltage_at_current_with_substrings``), which is retained beside this
+file for provenance and for its single-diode primitives. Both this model and
+``tct_eval.evaluate_tct`` describe the same array; they differ in how far down
+the hierarchy the bypass path is resolved.
 
 Physical model
 --------------
@@ -22,29 +18,28 @@ Each KC200GT module is composed of three 18-cell substrings. Each substring is
 a single-diode device with parameters partitioned from the module parameters
 (Rs, Rsh, and thermal voltage scaled by 18/54), and each substring is
 protected by its own bypass diode modelled as a 0.5 V forward drop in series
-with a 0.02 Ohm dynamic resistance (registry values). A substring whose
-single-diode voltage at the imposed current would fall below -Vd is clamped to
-V = -(Vd + I*rd), i.e. its bypass diode conducts. Module voltage is the sum of
-the three substring voltages. Rows are parallel blocks of substring-modelled
-modules (shared row voltage, currents sum), and rows are connected in series
-(shared current, voltages sum). There is NO row-level -1.0 V clamp: row
-voltage is bounded only by the physical bypass composition.
+with a 0.02 Ohm dynamic resistance. A substring whose single-diode voltage at
+the imposed current would fall below -Vd is clamped to V = -(Vd + I*rd), that
+is, its bypass diode conducts. Module voltage is the sum of the three
+substring voltages. Rows are parallel blocks of substring-modelled modules
+(shared row voltage, currents sum), and rows are connected in series (shared
+current, voltages sum). Row voltage is bounded only by the physical bypass
+composition, with no fixed row-level clamp.
 
-Constraint stated per the register: every module receives spatially uniform
-irradiance internally (one irradiance value per module), so all three
-substrings of a module share the same G and T. Under uniform G within the
-module, the three substrings are identical; the substring model therefore
-differs from the released monolithic-module model only where bypass
-conduction is engaged (reverse-biased modules inside a row, reverse-biased
-rows), because in the forward region the series composition of three 18-cell
-substrings is algebraically identical to one 54-cell device.
+Every module receives spatially uniform irradiance internally (one irradiance
+value per module), so all three substrings of a module share the same G and T.
+Under uniform irradiance within a module the three substrings are identical,
+so this model departs from a monolithic-module model only where bypass
+conduction is engaged, in reverse-biased modules inside a row and in
+reverse-biased rows. In the forward region the series composition of three
+18-cell substrings is algebraically identical to one 54-cell device.
 
 Numerics
 --------
 Per unique (G, T) pair, the substring voltage V_sub(I) is computed on a dense
-current grid by vectorised Newton-Raphson (same equation and parameter
-scaling as the oracle; verified pointwise against the oracle's scalar
-module_voltage_at_current_with_substrings). The module curve is
+current grid by vectorised Newton-Raphson, using the same equation and
+parameter scaling as ``tct_eval`` and verified pointwise against its scalar
+``module_voltage_at_current_with_substrings``. The module curve is
 V_mod(I) = sum over substrings of max(V_sub(I), -(Vd + I*rd)).
 The current grid is globally dense and additionally refined around each
 unique photocurrent value, where the bypass knee is sharp. Module curves are
@@ -52,8 +47,11 @@ monotone decreasing in I, so I_mod(V) is obtained by inverse interpolation.
 Row current at voltage Vr is the sum of module currents; row voltage at a
 target current is found by bisection on the monotone row current function.
 Array voltage at a current is the sum of row voltages; array Isc is found by
-bisection on V_array(I) = 0, and the I sweep then mirrors the released
+bisection on V_array(I) = 0, and the I sweep then mirrors the pvlib-backed
 solver's construction (num_points with a dense tail above 0.95*Isc).
+
+Not pipeline code. This model exists to regression-test the pvlib-backed
+solver and does not ship with the benchmark.
 """
 
 import sys
